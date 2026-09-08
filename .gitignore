@@ -1,0 +1,12 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+!.gradle/
+.gradle/
+build/
+out/
+.idea/
+*.iml
+.vscode/
+.DS_Store

@@ -54,8 +54,10 @@ public class TransactionExecutor {
         TransactionRecord record = new TransactionRecord(
                 request.transactionId(), request.userId(), request.amount(), request.type());
         try {
-            return recordRepository.saveAndFlush(record);
-        } catch (DataIntegrityViolationException e) {
+            entityManager.persist(record);
+            entityManager.flush();
+            return record;
+        } catch (jakarta.persistence.PersistenceException | org.springframework.dao.DataIntegrityViolationException e) {
             throw new DuplicateTransactionException(request.transactionId());
         }
     }

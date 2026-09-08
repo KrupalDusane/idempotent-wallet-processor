@@ -27,6 +27,13 @@ and are turned away. A duplicate then **polls** the record until it leaves
 guards against a crashed original) and receives the **exact cached JSON response**
 the original caller got — satisfying "409 Conflict **or** the cached original response".
 
+**Bug Fix: persist() vs merge() on Delayed Duplicates**
+- The original code used `recordRepository.saveAndFlush(record)` to claim a `transactionId`.
+- Spring Data JPA's `save()` decides `INSERT` vs `UPDATE` by calling `isNew(entity)` internally. Because `TransactionRecord` uses a manually-assigned `@Id` (no `@GeneratedValue`), JPA's default heuristic treats a non-null ID as "existing" and routes through `entityManager.merge()` instead of `persist()`.
+- `merge()` does a `SELECT` first. If a row with that `transactionId` already exists (e.g. a retried request arriving after the original had already committed), `merge()` silently `UPDATE`s that row instead of throwing a constraint violation — resetting its status back to `PENDING` and allowing `execute()` to run a second time, double-debiting the wallet.
+- This only surfaced in the sequential/delayed duplicate case, not the simultaneous concurrent case — concurrent requests still collided at `INSERT` time before either row existed, so the bug was invisible under the "3 at once" test but active under realistic delayed-retry conditions (the actual production scenario the assignment targets: payment gateway webhook retries).
+- **Fix:** replaced `saveAndFlush()` with a direct `entityManager.persist()` + `flush()` in `TransactionExecutor.claim()`, since `persist()` always issues an `INSERT` and always throws on a duplicate key — it never silently upserts.
+
 **Race B — simultaneous debits overdrawing the wallet.**
 The balance is never read-then-written in Java. Debits run as a single atomic,
 database-level conditional update:
